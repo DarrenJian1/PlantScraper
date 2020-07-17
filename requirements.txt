@@ -1,0 +1,16 @@
+aenum
+attrs
+beautifulsoup4
+bs4
+certifi
+chardet
+fbchat
+idna
+lxml
+paho-mgtt
+requests
+selenium
+setuptools
+soupsieve
+SQLAlchemy
+urllib3
