@@ -7,7 +7,6 @@ chardet
 fbchat
 idna
 lxml
-paho-mgtt
 requests
 selenium
 setuptools

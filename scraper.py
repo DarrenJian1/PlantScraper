@@ -5,6 +5,7 @@ from sqlalchemy.orm import sessionmaker
 from selenium import webdriver
 import time
 import requests
+import json
 import settings
 from bs4 import BeautifulSoup
 import fbchat
@@ -34,12 +35,19 @@ Session = sessionmaker(bind=engine)
 session = Session()
 
 def scrape_nse():
-
+    print("Starting NSE Scrape...  ")
     options = webdriver.ChromeOptions()
     options.add_argument('--ignore-certificate-errors')
     options.add_argument('--incognito')
     options.add_argument('--headless')
-    driver = webdriver.Chrome("./chromedriver", options=options)
+    options.add_argument("start-maximized")
+    options.add_argument("enable-automation")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-infobars")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-browser-side-navigation")
+    options.add_argument("--disable-gpu")
+    driver = webdriver.Chrome("../chromedriver", options=options)
 
     driver.get("https://www.nsetropicals.com/shop/")
 
@@ -73,19 +81,19 @@ def scrape_nse():
             session.commit()
 
             in_stock.append(["nsetropicals",name_id,instock_url])
-            
+    print("NSE scrape done")
     return in_stock
 
 
 def scrape_logee():
-
+    print("Starting Logees Scrape...")
     in_stock = []
     isItInStock = []
 
     for each_item in settings.LOGEES_SEARCH:
         s = requests.session()
-        s.get(each_item)
-        page = s.get(each_item)
+        #s.get(each_item)
+        page = s.get(each_item, timeout = 20, headers=settings.HEADER)
         page_source = page.content
 
         soup = BeautifulSoup(page_source, 'lxml')
@@ -115,22 +123,25 @@ def scrape_logee():
             session.commit()
 
             in_stock.append(["logees",name_id,instock_url])
-            
+    print("Logees scrape done")
     return in_stock
 
 def scrape_gabriella():
+    print("Starting Gabriella Scrape...")
 
     in_stock = []
     isItInStock = []
 
     for each_item in settings.GABRIELLA_SEARCH:
         s = requests.session()
-        s.get(each_item)
-        page = s.get(each_item)
+        #s.get(each_item)
+        page = s.get(each_item, timeout = 20, headers=settings.HEADER)
         page_source = page.content
 
         soup = BeautifulSoup(page_source, 'lxml')
-        isInStock = soup.find_all('div', class_='availability value_in')
+        #isInStock = soup.find_all('div', class_='availability value_in')
+        isInStock = soup.find_all('button', class_='single_add_to_cart_button')
+        name_id = "blank"
         name_id = soup.find('h1', class_='product_title entry-title').get_text()
         listing = session.query(Listing).filter_by(link= each_item).first()
         if(len(isInStock)>0):
@@ -156,11 +167,11 @@ def scrape_gabriella():
             session.commit()
 
             in_stock.append(["gabriellaplants",name_id,instock_url])
-            
+    print("Gabriella Scrape Done")
     return in_stock
 
 def fb_message(results):
-    client = fbchat.Client('') 
+    client = fbchat.Client('plantscraper@gmail.com','PlantBot510') 
     for result in results:
         source = result[0]
         plant = result[1]
@@ -168,12 +179,31 @@ def fb_message(results):
 
     #username = str(raw_input("Username: ")) 
         messageString = source + " has restocked on: " + plant + "\n\n" + url
-        #friends = client.searchForUsers("darren jian")  # return a list of names 
-        #friend = friends[0] 
-        #client.send(Message(text=messageString), thread_id=friend.uid, thread_type=ThreadType.USER)
+        # friends = client.searchForUsers("darren jian")  # return a list of names 
+        # friend = friends[0] 
+        # client.send(Message(text=messageString), thread_id=friend.uid, thread_type=ThreadType.USER)
         client.send(Message(text=messageString), thread_id="3091592367572794", thread_type=ThreadType.GROUP)
 
     client.logout()
+
+def slack_message(results): 
+    print("Sending Slack Message")
+    for result in results:
+        source = result[0]
+        plant = result[1]
+        url = result[2]
+
+        messageString = source + " has restocked on: " + plant + "\n\n" + url
+
+        data = {
+            'text': messageString,
+            'username': 'Planty Bot',
+            'icon_emoji': ':seedling:'
+        }
+
+        response = requests.post(settings.WEBHOOK_URL, data=json.dumps(data), headers={'Content-Type':'application/json'}) 
+
+        #print('Response: ' + str(response.text))
 
 def do_scrape():
     nse_results = scrape_nse()
@@ -181,7 +211,8 @@ def do_scrape():
     gabriella_results = scrape_gabriella()
     results = nse_results + logee_results + gabriella_results
     if len(results)>0:
-        fb_message(results)
+        #fb_message(results)
+        slack_message(results)
     update_listing()
 
 
@@ -199,7 +230,14 @@ def update_listing():
         options.add_argument('--ignore-certificate-errors')
         options.add_argument('--incognito')
         options.add_argument('--headless')
-        driver = webdriver.Chrome("./chromedriver", options=options)
+        options.add_argument("start-maximized")
+        options.add_argument("enable-automation")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-infobars")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-browser-side-navigation")
+        options.add_argument("--disable-gpu")
+        driver = webdriver.Chrome("../chromedriver", options=options)
 
         driver.get(past_instock.link)
 
@@ -211,7 +249,6 @@ def update_listing():
         in_stock = []
         #instocks_selector = soup.find_all('li', class_='instock product-type-simple')
         instocks_selector = soup.select('div.instock.product-type-simple')
-
         if len(instocks_selector) == 0:
             session.delete(past_instock)
     session.commit()
