@@ -12,21 +12,21 @@ from fbchat import Client
 from fbchat.models import *
 from getpass import getpass
 
-instock_url = "https://www.gabriellaplants.com/collections/home-page/products/4-white-butterfly-syngonium"
-notinstock_url = "https://www.gabriellaplants.com/collections/philodendron/products/4-pink-princess-philodendron"
+instock_url = "https://unsolicitedplanttalks.com/plants/p/jd8y7vfbjggp7tmw7kmbd0z7j13sl5"
+notinstock_url = "https://unsolicitedplanttalks.com/plants/p/hx8z321rys2val7jjuh0brhts13ax6"
 s = requests.session()
-s.get(instock_url)
-page = s.get(instock_url)
+page = s.get(instock_url, headers=settings.HEADER)
+print(page)
 page_source = page.content
 
 
 print('webscraping...')
 soup = BeautifulSoup(page_source, 'lxml')
 in_stock = []
-instocks_selector = soup.find_all('div', class_='availability value_in')
+instocks_selector = soup.find_all('article', class_='sold-out')
 print(instocks_selector)
-print("Is it in stock?: " + str(len(instocks_selector)>0))
-name_id = soup.find('h1', class_='product_title entry-title')
+print("Is it in stock?: " + str(len(instocks_selector)==0))
+name_id = soup.find('h1', class_='ProductItem-details-title')
 print(name_id)
 
 # for instock_selector in instocks_selector:

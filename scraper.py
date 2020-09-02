@@ -65,7 +65,7 @@ def scrape_nse():
         name_id = instock_selector.find('h2', class_='woocommerce-loop-product__title').get_text()
         instock_url = instock_selector.find('a')['href']
         listing = session.query(Listing).filter_by(link= instock_url).first()
-        for words in settings.BLACKLIST_WORDS:
+        for words in settings.BLACKLIST_NSE_WORDS:
             if words in name_id.lower():
                 avoid = False
                 break
@@ -84,6 +84,56 @@ def scrape_nse():
     print("NSE scrape done")
     return in_stock
 
+def scrape_gardino():
+    print("Starting Gardino Scrape...  ")
+    options = webdriver.ChromeOptions()
+    options.add_argument('--ignore-certificate-errors')
+    options.add_argument('--incognito')
+    options.add_argument('--headless')
+    options.add_argument("start-maximized")
+    options.add_argument("enable-automation")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-infobars")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-browser-side-navigation")
+    options.add_argument("--disable-gpu")
+    driver = webdriver.Chrome("../chromedriver", options=options)
+
+    driver.get("https://gardinonursery.com/product-category/categories/hoyas/hoyas-full-list/")
+
+    page_source = driver.page_source
+    driver.quit()
+
+
+    soup = BeautifulSoup(page_source, 'lxml')
+    in_stock = []
+    #instocks_selector = soup.find_all('li', class_='instock product-type-simple')
+    instocks_selector = soup.select('li.instock.product-type-simple')
+
+    for instock_selector in instocks_selector:
+        avoid = True
+        name_id = instock_selector.find('h2', class_='woocommerce-loop-product__title').get_text()
+        instock_url = instock_selector.find('a')['href']
+        listing = session.query(Listing).filter_by(link= instock_url).first()
+        for words in settings.BLACKLIST_GARDINO_WORDS:
+            if words in name_id.lower():
+                avoid = False
+                break
+        if listing is None and avoid:
+
+            listing = Listing(
+                link=instock_url,
+                name=name_id,
+                source="gardino",
+            )
+
+            session.add(listing)
+            session.commit()
+
+            in_stock.append(["gardino",name_id,instock_url])
+    print("Gardino scrape done")
+    return in_stock
+
 
 def scrape_logee():
     print("Starting Logees Scrape...")
@@ -93,19 +143,27 @@ def scrape_logee():
     for each_item in settings.LOGEES_SEARCH:
         s = requests.session()
         #s.get(each_item)
-        page = s.get(each_item, timeout = 20, headers=settings.HEADER)
-        page_source = page.content
+        try:
+            page = s.get(each_item, timeout = 20, headers=settings.HEADER)
+        except:
+            print("Connection failure to logees.com")
+        else:
+            page_source = page.content
 
-        soup = BeautifulSoup(page_source, 'lxml')
-        isInStock = soup.find_all('p', class_='availability in-stock')
-        name_id = soup.find('div', class_='product-name').get_text()
-        listing = session.query(Listing).filter_by(link= each_item).first()
-        if(len(isInStock)>0):
-            isItInStock.append(['logees',name_id,each_item])
-        elif listing:
-            print("Logee Scraping: deleting " + listing.name)
-            session.delete(listing)
-            session.commit()
+            soup = BeautifulSoup(page_source, 'lxml')
+            try:
+                isInStock = soup.find_all('p', class_='availability in-stock')
+                name_id = soup.find('div', class_='product-name').get_text()
+            except:
+                print("Logees: Elements not found")
+            else:
+                listing = session.query(Listing).filter_by(link= each_item).first()
+                if(len(isInStock)>0):
+                    isItInStock.append(['logees',name_id,each_item])
+                elif listing:
+                    print("Logee Scraping: deleting " + listing.name)
+                    session.delete(listing)
+                    session.commit()
 
     for in_stock_item in isItInStock:
         name_id = in_stock_item[1]
@@ -135,21 +193,29 @@ def scrape_gabriella():
     for each_item in settings.GABRIELLA_SEARCH:
         s = requests.session()
         #s.get(each_item)
-        page = s.get(each_item, timeout = 20, headers=settings.HEADER)
-        page_source = page.content
+        try:
+            page = s.get(each_item, timeout = 20, headers=settings.HEADER)
+        except:
+            print("Connection failure to gabriellaplants.com")
+        else:
+            page_source = page.content
 
-        soup = BeautifulSoup(page_source, 'lxml')
-        #isInStock = soup.find_all('div', class_='availability value_in')
-        isInStock = soup.find_all('button', class_='single_add_to_cart_button')
-        name_id = "blank"
-        name_id = soup.find('h1', class_='product_title entry-title').get_text()
-        listing = session.query(Listing).filter_by(link= each_item).first()
-        if(len(isInStock)>0):
-            isItInStock.append(['gabriellaplants',name_id,each_item])
-        elif listing:
-            listing = session.query(Listing).filter_by(link= each_item).first()
-            session.delete(listing)
-            session.commit()
+            soup = BeautifulSoup(page_source, 'lxml')
+            #isInStock = soup.find_all('div', class_='availability value_in')
+            try:
+                isInStock = soup.find_all('button', class_='single_add_to_cart_button')
+                name_id = "blank"
+                name_id = soup.find('h1', class_='product_title entry-title').get_text()
+            except:
+                print("Gabriella: Elements not found")
+            else:
+                listing = session.query(Listing).filter_by(link= each_item).first()
+                if(len(isInStock)>0):
+                    isItInStock.append(['gabriellaplants',name_id,each_item])
+                elif listing:
+                    listing = session.query(Listing).filter_by(link= each_item).first()
+                    session.delete(listing)
+                    session.commit()
 
     for in_stock_item in isItInStock:
         name_id = in_stock_item[1]
@@ -168,6 +234,112 @@ def scrape_gabriella():
 
             in_stock.append(["gabriellaplants",name_id,instock_url])
     print("Gabriella Scrape Done")
+    return in_stock
+
+def scrape_USPT():
+    print("Starting UnsolicitedPlantTalk Scrape...")
+
+    in_stock = []
+    isItInStock = []
+
+    for each_item in settings.USPT_SEARCH:
+        s = requests.session()
+        #s.get(each_item)
+        try:
+            page = s.get(each_item, timeout = 20, headers=settings.HEADER)
+        except:
+            print("Connection failure to unsolicitedplanttalk.com")
+        else:
+            page_source = page.content
+            soup = BeautifulSoup(page_source, 'lxml')
+            try:
+                isInStock = soup.find_all('article', class_='sold-out')
+                name_id = "blank"
+                name_id = soup.find('h1', class_='ProductItem-details-title').get_text()
+            except:
+                print("USPT: Elements not found")
+
+            else:
+                listing = session.query(Listing).filter_by(link= each_item).first()
+                if(len(isInStock)==0):
+                    isItInStock.append(['USPT',name_id,each_item])
+                elif listing:
+                    listing = session.query(Listing).filter_by(link= each_item).first()
+                    session.delete(listing)
+                    session.commit()
+
+    for in_stock_item in isItInStock:
+        name_id = in_stock_item[1]
+        instock_url = in_stock_item[2]
+        listing = session.query(Listing).filter_by(link= instock_url).first()
+        if listing is None:
+
+            listing = Listing(
+                link=instock_url,
+                name=name_id,
+                source="USPT",
+            )
+
+            session.add(listing)
+            session.commit()
+
+            in_stock.append(["USPT",name_id,instock_url])
+    print("USPT Scrape Done")
+    return in_stock
+
+def scrape_aloha():
+    print("Starting Aloha Scrape...")
+
+    in_stock = []
+    isItInStock = []
+
+    for each_item in settings.ALOHA_SEARCH:
+        s = requests.session()
+        #s.get(each_item)
+        try:
+            page = s.get(each_item, timeout = 20, headers=settings.HEADER)
+        except:
+            print("Connection failure to peaceofaloha.com")
+        else:
+            page_source = page.content
+
+            soup = BeautifulSoup(page_source, 'lxml')
+            #isInStock = soup.find_all('div', class_='availability value_in')
+            try:
+               # isInStock = soup.find_all('span', class_='buttonnext1499656494__content')
+                isInStock = soup.find_all('button', {"data-hook":"add-to-cart","aria-disabled": "false"})
+                name_id = "blank"
+                #name_id = soup.find('h1', class_='product_title entry-title').get_text()
+                name_id = soup.find('h1', {"data-hook":"product-title"}).get_text()
+            except:
+                print("Aloha: Elements not found")
+                
+            else:
+                listing = session.query(Listing).filter_by(link= each_item).first()
+                if(len(isInStock)>0):
+                    isItInStock.append(['aloha',name_id,each_item])
+                elif listing:
+                    listing = session.query(Listing).filter_by(link= each_item).first()
+                    session.delete(listing)
+                    session.commit()
+
+    for in_stock_item in isItInStock:
+        name_id = in_stock_item[1]
+        instock_url = in_stock_item[2]
+        listing = session.query(Listing).filter_by(link= instock_url).first()
+        if listing is None:
+
+            listing = Listing(
+                link=instock_url,
+                name=name_id,
+                source="aloha",
+            )
+
+            session.add(listing)
+            session.commit()
+
+            in_stock.append(["aloha",name_id,instock_url])
+    print("Aloha Scrape Done")
     return in_stock
 
 def fb_message(results):
@@ -193,7 +365,7 @@ def slack_message(results):
         plant = result[1]
         url = result[2]
 
-        messageString = source + " has restocked on: " + plant + "\n\n" + url
+        messageString = source + " has restocked on: " + plant + "\n" + url +"\n~~~~~~~~~~~~~~~~~~~"
 
         data = {
             'text': messageString,
@@ -207,9 +379,13 @@ def slack_message(results):
 
 def do_scrape():
     nse_results = scrape_nse()
+    gardino_results = scrape_gardino()
     logee_results = scrape_logee()
     gabriella_results = scrape_gabriella()
-    results = nse_results + logee_results + gabriella_results
+    aloha_results = scrape_aloha()
+    USPT_results = scrape_USPT()
+    
+    results = nse_results + logee_results + gabriella_results + gardino_results + aloha_results + USPT_results
     if len(results)>0:
         #fb_message(results)
         slack_message(results)
