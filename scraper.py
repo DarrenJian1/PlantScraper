@@ -2,16 +2,22 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy import or_
 from selenium import webdriver
+import concurrent.futures
 import time
 import requests
 import json
 import settings
+import schedule
 from bs4 import BeautifulSoup
 import fbchat
 from fbchat import Client
 from fbchat.models import *
 from getpass import getpass
+
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.blocking import BlockingScheduler
 
 
 
@@ -144,7 +150,7 @@ def scrape_logee():
         s = requests.session()
         #s.get(each_item)
         try:
-            page = s.get(each_item, timeout = 20, headers=settings.HEADER)
+            page = s.get(each_item, timeout=30, headers=settings.HEADER)
         except:
             print("Connection failure to logees.com")
         else:
@@ -194,7 +200,7 @@ def scrape_gabriella():
         s = requests.session()
         #s.get(each_item)
         try:
-            page = s.get(each_item, timeout = 20, headers=settings.HEADER)
+            page = s.get(each_item, timeout=30, headers=settings.HEADER)
         except:
             print("Connection failure to gabriellaplants.com")
         else:
@@ -246,7 +252,7 @@ def scrape_USPT():
         s = requests.session()
         #s.get(each_item)
         try:
-            page = s.get(each_item, timeout = 20, headers=settings.HEADER)
+            page = s.get(each_item, timeout=30, headers=settings.HEADER)
         except:
             print("Connection failure to unsolicitedplanttalk.com")
         else:
@@ -297,7 +303,7 @@ def scrape_aloha():
         s = requests.session()
         #s.get(each_item)
         try:
-            page = s.get(each_item, timeout = 20, headers=settings.HEADER)
+            page = s.get(each_item, timeout=30, headers=settings.HEADER)
         except:
             print("Connection failure to peaceofaloha.com")
         else:
@@ -377,21 +383,6 @@ def slack_message(results):
 
         #print('Response: ' + str(response.text))
 
-def do_scrape():
-    nse_results = scrape_nse()
-    gardino_results = scrape_gardino()
-    logee_results = scrape_logee()
-    gabriella_results = scrape_gabriella()
-    aloha_results = scrape_aloha()
-    USPT_results = scrape_USPT()
-    
-    results = nse_results + logee_results + gabriella_results + gardino_results + aloha_results + USPT_results
-    if len(results)>0:
-        #fb_message(results)
-        slack_message(results)
-    update_listing()
-
-
 
     #Test Deleting an element in our session query
     # listing = session.query(Listing).filter_by(link="https://www.nsetropicals.com/product/variegated-ficus-triangularis/").first()
@@ -427,8 +418,87 @@ def update_listing():
         instocks_selector = soup.select('div.instock.product-type-simple')
         if len(instocks_selector) == 0:
             session.delete(past_instock)
+    for past_instock in session.query(Listing).filter_by(source="gardino"):
+        print(past_instock.link)
+
+        options = webdriver.ChromeOptions()
+        options.add_argument('--ignore-certificate-errors')
+        options.add_argument('--incognito')
+        options.add_argument('--headless')
+        options.add_argument("start-maximized")
+        options.add_argument("enable-automation")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-infobars")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-browser-side-navigation")
+        options.add_argument("--disable-gpu")
+        driver = webdriver.Chrome("../chromedriver", options=options)
+
+        driver.get(past_instock.link)
+
+        page_source = driver.page_source
+        driver.quit()
+
+
+        soup = BeautifulSoup(page_source, 'lxml')
+        in_stock = []
+        #instocks_selector = soup.find_all('li', class_='instock product-type-simple')
+        instocks_selector = soup.select('div.instock.product-type-simple')
+        if len(instocks_selector) == 0:
+            session.delete(past_instock)
     session.commit()
     #listing = session.query(Listing).filter_by(source="nsetropicals")
     #print(listing.all())
+
+def do_scrape():
+    # nse_results = scrape_nse()
+    # gardino_results = scrape_gardino()
+    # logee_results = scrape_logee()
+    # gabriella_results = scrape_gabriella()
+    # aloha_results = scrape_aloha()
+    # USPT_results = scrape_USPT()
+
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        f1 = executor.submit(scrape_nse)
+        f2 = executor.submit(scrape_gardino)
+        f3 = executor.submit(scrape_logee)
+        f4 = executor.submit(scrape_gabriella)
+        f5 = executor.submit(scrape_aloha)
+        f6 = executor.submit(scrape_USPT)
+
+        nse_results = f1.result()
+        gardino_results = f2.result()
+        logee_results = f3.result()
+        gabriella_results = f4.result()
+        aloha_results = f5.result()
+        USPT_results = f6.result()
+
+        output = nse_results + logee_results + gabriella_results + gardino_results + aloha_results + USPT_results
+        if len(output)>0:
+            #fb_message(results)
+            slack_message(output)
+        update_listing()
+        #update_gardino_listing()
+
+if __name__ == "__main__":
+    # schedule.every().minute.at(":00").do(do_scrape)
+    # while True:
+    #     schedule.run_pending()
+    #     time.sleep(1)
+
+    # sched = BackgroundScheduler(daemon=True)
+    # sched.add_job(do_scrape, 'cron',minute='*')
+    # sched.start()
+
+    scheduler = BlockingScheduler()
+    #trigger = 
+    scheduler.add_job(do_scrape, 'cron', hour='6-21',minute='*',second='0')
+    print('Press Ctrl+{0} to exit'.format('C'))
+    try:
+        scheduler.start()
+    except (SystemExit):
+        pass
+    except (KeyboardInterrupt):
+        exit
 
 
