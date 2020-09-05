@@ -12,6 +12,7 @@ BLACKLIST_NSE_WORDS = ['certificate', 't-shirt', 'tote bag', 'nse tropicals', 't
                     'obliqua','titanum', 'anthurium gracile','rhaphidophora decursiva',
                     'makoyana','ficus triangularis','spagmoss','birkin','philodendron grazielae',
                     'silver dragon','thaumatophyllum','alocasia maharani']
+BLACKLIST_KEN_WORDS = []
 WHITELIST_WORDS = ['monstera deliciosa', 'verrucosum', 'squamiferum', 'plowmanii', 
                     'pastazanum', 'nangaritense','melanochrysum','hastatum','gloriosum',
                     'giganteum', 'fibrosum','69686','pink princess','florida ghost',

@@ -9,14 +9,12 @@ import time
 import requests
 import json
 import settings
-import schedule
 from bs4 import BeautifulSoup
 import fbchat
 from fbchat import Client
 from fbchat.models import *
 from getpass import getpass
 
-from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 
@@ -89,6 +87,59 @@ def scrape_nse():
             in_stock.append(["nsetropicals",name_id,instock_url])
     print("NSE scrape done")
     return in_stock
+
+def scrape_ken():
+    print("Starting Ken Scrape...  ")
+    options = webdriver.ChromeOptions()
+    options.add_argument('--ignore-certificate-errors')
+    options.add_argument('--incognito')
+    options.add_argument('--headless')
+    options.add_argument("start-maximized")
+    options.add_argument("enable-automation")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-infobars")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-browser-side-navigation")
+    options.add_argument("--disable-gpu")
+    driver = webdriver.Chrome("../chromedriver", options=options)
+
+    driver.get("https://kensphilodendrons.com/shop/")
+
+    page_source = driver.page_source
+    driver.quit()
+
+
+    soup = BeautifulSoup(page_source, 'lxml')
+    in_stock = []
+    #instocks_selector = soup.find_all('li', class_='instock product-type-simple')
+    instocks_selector = soup.select('div.instock.product-type-simple')
+
+    for instock_selector in instocks_selector:
+        avoid = True
+        name_id = instock_selector.find('p', class_='woocommerce-loop-product__title').get_text()
+        instock_url = instock_selector.find('a')['href']
+        print(name_id)
+        print(instock_url)
+        listing = session.query(Listing).filter_by(link= instock_url).first()
+        for words in settings.BLACKLIST_KEN_WORDS:
+            if words in name_id.lower():
+                avoid = False
+                break
+        if listing is None and avoid:
+
+            listing = Listing(
+                link=instock_url,
+                name=name_id,
+                source="kensphilodendrons",
+            )
+
+            session.add(listing)
+            session.commit()
+
+            in_stock.append(["kensphilodendrons",name_id,instock_url])
+    print("Ken scrape done")
+    return in_stock
+
 
 def scrape_gardino():
     print("Starting Gardino Scrape...  ")
@@ -499,6 +550,7 @@ if __name__ == "__main__":
     except (SystemExit):
         pass
     except (KeyboardInterrupt):
+        print('Exiting...')
         exit
 
 
